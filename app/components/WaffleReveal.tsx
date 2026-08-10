@@ -9,6 +9,7 @@ const FRAME_PREFIX = "frame_";
 
 // End animation sequence precisely at frame 270 (Image 1, final assembled plate)
 const TOTAL_FRAMES = 270;
+const INITIAL_CRITICAL_FRAMES = 20; // Load initial 20 frames for instant < 1.5s website opening
 const REVERSE_SEQUENCE = false;
 
 // Geometric scroll track height tuning constant (500vh for snappy, active scrollytelling)
@@ -26,7 +27,7 @@ export default function WaffleReveal() {
   const currentFrameRef = useRef<number>(0);
   const prefersReducedMotion = useReducedMotion();
 
-  // Raw 1:1 scroll tracking across the sticky section (zero lag, instant response)
+  // Raw 1:1 scroll tracking across the sticky section
   const { scrollYProgress } = useScroll({
     target: containerRef,
     offset: ["start start", "end end"],
@@ -40,21 +41,19 @@ export default function WaffleReveal() {
   const heroTextY = useTransform(scrollYProgress, [0.82, 0.95, 1.00], [20, 0, 0]);
   const heroTextScale = useTransform(scrollYProgress, [0.82, 0.95, 1.00], [0.97, 1, 1]);
 
-  // Preload and decode 270 WebP frames up to frame_0270.webp
+  // Progressive Preload Architecture: Fast critical initial batch for instant <1.5s load time
   useEffect(() => {
     let isMounted = true;
     const loadedBitmaps: (ImageBitmap | HTMLImageElement)[] = new Array(TOTAL_FRAMES);
     let completed = 0;
 
-    const loadFrame = async (index: number) => {
+    const loadSingleFrame = async (index: number) => {
       const frameNum = (index + 1).toString().padStart(4, "0");
       const src = `${FRAME_PATH}${FRAME_PREFIX}${frameNum}.webp`;
 
       try {
         const response = await fetch(src);
-        if (!response.ok) {
-          throw new Error(`HTTP Error ${response.status} fetching ${src}`);
-        }
+        if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
         const blob = await response.blob();
         const bitmap = await createImageBitmap(blob);
         if (isMounted) {
@@ -75,8 +74,7 @@ export default function WaffleReveal() {
             completed++;
             setLoadedCount(completed);
           }
-        } catch (fallbackErr) {
-          console.warn(`[WaffleReveal] Frame ${index + 1} failed to load:`, fallbackErr);
+        } catch {
           if (isMounted) {
             completed++;
             setLoadedCount(completed);
@@ -85,25 +83,40 @@ export default function WaffleReveal() {
       }
     };
 
-    const loadAll = async () => {
-      const promises = [];
-      for (let i = 0; i < TOTAL_FRAMES; i++) {
-        promises.push(loadFrame(i));
-      }
-      await Promise.all(promises);
+    const startProgressiveLoad = async () => {
+      bitMapsRef.current = loadedBitmaps;
 
+      // Batch 1: Load critical first 20 frames immediately
+      const initialPromises = [];
+      for (let i = 0; i < INITIAL_CRITICAL_FRAMES; i++) {
+        initialPromises.push(loadSingleFrame(i));
+      }
+      await Promise.all(initialPromises);
+
+      // Dismiss splash screen immediately after initial batch (under 1.5 seconds)
       if (isMounted) {
-        bitMapsRef.current = loadedBitmaps;
         setIsLoaded(true);
-
-        const decodedCount = loadedBitmaps.filter((bm) => bm !== undefined).length;
-        console.log(
-          `[WaffleReveal] Preload Complete: ${decodedCount} / ${TOTAL_FRAMES} frames successfully decoded.`
-        );
       }
+
+      // Hard timeout fallback: force dismiss splash after 1.5s regardless
+      const fallbackTimer = setTimeout(() => {
+        if (isMounted) setIsLoaded(true);
+      }, 1500);
+
+      // Batch 2: Background download remaining frames progressively without blocking UI
+      const remainingIndexes = Array.from({ length: TOTAL_FRAMES - INITIAL_CRITICAL_FRAMES }, (_, i) => i + INITIAL_CRITICAL_FRAMES);
+      const CHUNK_SIZE = 15;
+
+      for (let i = 0; i < remainingIndexes.length; i += CHUNK_SIZE) {
+        if (!isMounted) break;
+        const chunk = remainingIndexes.slice(i, i + CHUNK_SIZE);
+        await Promise.all(chunk.map((idx) => loadSingleFrame(idx)));
+      }
+
+      clearTimeout(fallbackTimer);
     };
 
-    loadAll();
+    startProgressiveLoad();
 
     return () => {
       isMounted = false;
@@ -115,14 +128,31 @@ export default function WaffleReveal() {
     };
   }, []);
 
-  // Canvas draw logic
-  const renderFrame = useCallback((frameIndex: number) => {
+  // Canvas draw logic with nearest available frame fallback
+  const renderFrame = useCallback((targetIndex: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const img = bitMapsRef.current[frameIndex];
+    // Find requested bitmap or fallback to closest loaded bitmap
+    let img = bitMapsRef.current[targetIndex];
+    if (!img) {
+      for (let i = targetIndex; i >= 0; i--) {
+        if (bitMapsRef.current[i]) {
+          img = bitMapsRef.current[i];
+          break;
+        }
+      }
+    }
+    if (!img) {
+      for (let i = targetIndex; i < TOTAL_FRAMES; i++) {
+        if (bitMapsRef.current[i]) {
+          img = bitMapsRef.current[i];
+          break;
+        }
+      }
+    }
     if (!img) return;
 
     const imgWidth = img.width;
@@ -216,16 +246,16 @@ export default function WaffleReveal() {
       style={{ height: `${SCROLL_TRACK_VH}vh` }}
       className="relative w-full bg-[#0E0906]"
     >
-      {/* Luxury Intro Splash Curtain - Fades out on load with Zoom Exit */}
+      {/* Fast Luxury Splash Curtain - Dismisses in < 1.5s */}
       <AnimatePresence>
         {!isLoaded && (
           <motion.div
             initial={{ opacity: 1, scale: 1 }}
             exit={{
               opacity: 0,
-              scale: 1.15,
+              scale: 1.12,
               filter: "blur(6px)",
-              transition: { duration: 0.9, ease: [0.16, 1, 0.3, 1] },
+              transition: { duration: 0.8, ease: [0.16, 1, 0.3, 1] },
             }}
             className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#0E0906] hero-canvas-bg px-6 select-none"
           >
@@ -251,11 +281,6 @@ export default function WaffleReveal() {
               <p className="font-dmsans text-xs sm:text-sm md:text-base font-bold uppercase tracking-[0.25em] text-[#F2EEE6]/90 mb-6">
                 EXPERIENCE THE REAL TASTE
               </p>
-
-              {/* Subtle Loading Progress Text */}
-              <div className="text-[10px] font-mono text-[#D4A85C]/70 tracking-widest uppercase">
-                LOADING EXPERIENCE... ({Math.round((loadedCount / TOTAL_FRAMES) * 100)}%)
-              </div>
             </div>
           </motion.div>
         )}
@@ -387,7 +412,7 @@ export default function WaffleReveal() {
           </div>
         </motion.div>
 
-        {/* Simplified Live Readout (1 progress source: scroll: 0.xxx | frame: N) */}
+        {/* Simplified Live Readout */}
         {process.env.NODE_ENV === "development" && (
           <div className="fixed bottom-3 right-3 z-50 px-3 py-1 rounded bg-[#0E0906]/90 border border-[#D4A85C]/40 text-[11px] font-mono text-[#D4A85C] pointer-events-none select-none shadow-md">
             scroll: {scrollProgress.toFixed(3)} | frame: {currentFrameRef.current + 1}
