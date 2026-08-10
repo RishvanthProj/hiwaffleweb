@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { useScroll, useMotionValueEvent, useTransform, useReducedMotion, motion, AnimatePresence } from "framer-motion";
+import { useScroll, useSpring, useMotionValueEvent, useTransform, useReducedMotion, motion, AnimatePresence } from "framer-motion";
 import { Star, Sparkles, Heart } from "lucide-react";
 
 const FRAME_PATH = "/sequence/waffle-reveal/";
@@ -17,26 +17,41 @@ export default function WaffleReveal() {
   const [loadedCount, setLoadedCount] = useState(0);
   const [isLoaded, setIsLoaded] = useState(false);
   const [splashFinished, setSplashFinished] = useState(false);
-  const [scrollProgress, setScrollProgress] = useState(0);
+
+  // Debug readout states
+  const [rawProgressValue, setRawProgressValue] = useState(0);
+  const [smoothProgressValue, setSmoothProgressValue] = useState(0);
 
   const bitMapsRef = useRef<(ImageBitmap | HTMLImageElement)[]>([]);
   const animationFrameRef = useRef<number | null>(null);
   const currentFrameRef = useRef<number>(0);
   const prefersReducedMotion = useReducedMotion();
 
-  // Scroll tracking across the sticky 300vh section
+  // Raw scroll tracking across the sticky 300vh section
   const { scrollYProgress } = useScroll({
     target: containerRef,
     offset: ["start start", "end end"],
   });
 
-  // Initial scroll indicator (fades out as scroll starts 0 -> 0.05)
-  const initialScrollCueOpacity = useTransform(scrollYProgress, [0, 0.05], [1, 0]);
+  // Overdamped spring smoothing (stiffness: 60, damping: 20, mass: 1, restDelta: 0.0005)
+  // Damping ratio ~1.3 guarantees smoothProgress monotonically catches up to scrollYProgress with ZERO overshoot
+  const springProgress = useSpring(scrollYProgress, {
+    stiffness: 60,
+    damping: 20,
+    mass: 1,
+    restDelta: 0.0005,
+  });
+
+  // Accessibility: when prefers-reduced-motion is enabled, bypass spring smoothing entirely
+  const smoothProgress = prefersReducedMotion ? scrollYProgress : springProgress;
+
+  // Initial scroll indicator (fades out as smoothProgress starts 0 -> 0.05)
+  const initialScrollCueOpacity = useTransform(smoothProgress, [0, 0.05], [1, 0]);
 
   // Main Hero Brand Content reveals ONLY AFTER the scroll animation fully completes (0.82 -> 0.95 -> 1.00)
-  const heroTextOpacity = useTransform(scrollYProgress, [0.82, 0.95, 1.00], [0, 1, 1]);
-  const heroTextY = useTransform(scrollYProgress, [0.82, 0.95, 1.00], [20, 0, 0]);
-  const heroTextScale = useTransform(scrollYProgress, [0.82, 0.95, 1.00], [0.97, 1, 1]);
+  const heroTextOpacity = useTransform(smoothProgress, [0.82, 0.95, 1.00], [0, 1, 1]);
+  const heroTextY = useTransform(smoothProgress, [0.82, 0.95, 1.00], [20, 0, 0]);
+  const heroTextScale = useTransform(smoothProgress, [0.82, 0.95, 1.00], [0.97, 1, 1]);
 
   // Preload and decode 270 WebP frames up to frame_0270.webp
   useEffect(() => {
@@ -167,10 +182,15 @@ export default function WaffleReveal() {
     });
   }, [renderFrame]);
 
-  // Map scroll progress (0.00 -> 0.82) linearly to frame index (0 -> 269 = frame_0270.webp)
+  // Track raw scrollYProgress for debug readout
   useMotionValueEvent(scrollYProgress, "change", (latest) => {
-    setScrollProgress(latest);
-    if (!isLoaded || prefersReducedMotion) return;
+    setRawProgressValue(latest);
+  });
+
+  // Track smoothProgress for debug readout and canvas frame scrubbing
+  useMotionValueEvent(smoothProgress, "change", (latest) => {
+    setSmoothProgressValue(latest);
+    if (!isLoaded) return;
 
     const animationProgress = Math.max(0, Math.min(1, latest / 0.82));
     let progress = animationProgress;
@@ -186,8 +206,9 @@ export default function WaffleReveal() {
 
   useEffect(() => {
     if (isLoaded) {
-      const currentScroll = scrollYProgress.get();
-      setScrollProgress(currentScroll);
+      const currentScroll = smoothProgress.get();
+      setSmoothProgressValue(currentScroll);
+      setRawProgressValue(scrollYProgress.get());
       const animationProgress = Math.max(0, Math.min(1, currentScroll / 0.82));
       let progress = animationProgress;
       if (REVERSE_SEQUENCE) progress = 1 - progress;
@@ -197,7 +218,7 @@ export default function WaffleReveal() {
       );
       requestFrameDraw(targetFrame);
     }
-  }, [isLoaded, scrollYProgress, requestFrameDraw]);
+  }, [isLoaded, smoothProgress, scrollYProgress, requestFrameDraw]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -211,6 +232,11 @@ export default function WaffleReveal() {
 
   return (
     <section id="experience" ref={containerRef} className="relative h-[300vh] w-full bg-[#0E0906]">
+      {/* Live Debug Verification Readout */}
+      <div className="fixed top-4 right-4 z-50 bg-[#0E0906]/90 text-[#D4A85C] border border-[#D4A85C]/40 px-3.5 py-2 rounded-md text-xs font-mono shadow-2xl pointer-events-none select-none">
+        raw: {rawProgressValue.toFixed(3)} | smooth: {smoothProgressValue.toFixed(3)} | frame: {currentFrameRef.current}
+      </div>
+
       {/* Luxury Intro Splash Screen with Cinematic Zoom-In Exit Transition */}
       <AnimatePresence>
         {!splashFinished && (
@@ -302,7 +328,7 @@ export default function WaffleReveal() {
             opacity: heroTextOpacity,
             y: heroTextY,
             scale: heroTextScale,
-            pointerEvents: scrollProgress >= 0.82 ? "auto" : "none",
+            pointerEvents: smoothProgressValue >= 0.82 ? "auto" : "none",
           }}
           className="absolute inset-0 z-20 flex flex-col justify-start items-start pt-24 sm:pt-28 md:pt-32 lg:pt-36 px-8 sm:px-14 md:px-20 lg:px-28 max-w-7xl mx-auto pointer-events-none"
         >
