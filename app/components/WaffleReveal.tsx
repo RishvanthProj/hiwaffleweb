@@ -11,7 +11,7 @@ const FRAME_PREFIX = "frame_";
 const TOTAL_FRAMES = 270;
 const REVERSE_SEQUENCE = false;
 
-// Geometric scroll track height tuning constant (Tuned to 500vh for snappy, active scrollytelling)
+// Geometric scroll track height tuning constant (500vh for snappy, active scrollytelling)
 const SCROLL_TRACK_VH = 500;
 
 export default function WaffleReveal() {
@@ -19,7 +19,6 @@ export default function WaffleReveal() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [loadedCount, setLoadedCount] = useState(0);
   const [isLoaded, setIsLoaded] = useState(false);
-  const [splashFinished, setSplashFinished] = useState(false);
   const [scrollProgress, setScrollProgress] = useState(0);
 
   const bitMapsRef = useRef<(ImageBitmap | HTMLImageElement)[]>([]);
@@ -96,11 +95,6 @@ export default function WaffleReveal() {
       if (isMounted) {
         bitMapsRef.current = loadedBitmaps;
         setIsLoaded(true);
-
-        // Keep intro splash for a brief cinematic moment then trigger zoom reveal
-        setTimeout(() => {
-          if (isMounted) setSplashFinished(true);
-        }, 1200);
 
         const decodedCount = loadedBitmaps.filter((bm) => bm !== undefined).length;
         console.log(
@@ -222,28 +216,23 @@ export default function WaffleReveal() {
       style={{ height: `${SCROLL_TRACK_VH}vh` }}
       className="relative w-full bg-[#0E0906]"
     >
-      {/* Luxury Intro Splash Screen with Cinematic Zoom-In Exit Transition */}
+      {/* Luxury Intro Splash Curtain - Fades out on load with Zoom Exit */}
       <AnimatePresence>
-        {!splashFinished && (
+        {!isLoaded && (
           <motion.div
             initial={{ opacity: 1, scale: 1 }}
             exit={{
               opacity: 0,
-              scale: 1.25,
-              filter: "blur(8px)",
-              transition: { duration: 1.1, ease: [0.16, 1, 0.3, 1] },
+              scale: 1.15,
+              filter: "blur(6px)",
+              transition: { duration: 0.9, ease: [0.16, 1, 0.3, 1] },
             }}
             className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#0E0906] hero-canvas-bg px-6 select-none"
           >
             {/* Ambient Gold Bloom behind Intro Text */}
             <div className="absolute w-96 h-96 rounded-full bg-[radial-gradient(circle,rgba(212,168,92,0.2)_0%,transparent_70%)] blur-3xl pointer-events-none" />
 
-            <motion.div
-              initial={{ opacity: 0, y: 20, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              transition={{ duration: 0.8, ease: "easeOut" }}
-              className="relative z-10 flex flex-col items-center text-center max-w-xl"
-            >
+            <div className="relative z-10 flex flex-col items-center text-center max-w-xl">
               {/* Eyebrow */}
               <div className="flex items-center gap-3 text-[#D4A85C] text-xs sm:text-sm font-semibold uppercase tracking-[0.3em] mb-4">
                 <span className="w-8 h-[1px] bg-[#D4A85C]" />
@@ -259,10 +248,15 @@ export default function WaffleReveal() {
               <div className="w-16 h-[1px] bg-gradient-to-r from-transparent via-[#D4A85C] to-transparent mb-5" />
 
               {/* Subhead Tagline */}
-              <p className="font-dmsans text-xs sm:text-sm md:text-base font-bold uppercase tracking-[0.25em] text-[#F2EEE6]/90">
+              <p className="font-dmsans text-xs sm:text-sm md:text-base font-bold uppercase tracking-[0.25em] text-[#F2EEE6]/90 mb-6">
                 EXPERIENCE THE REAL TASTE
               </p>
-            </motion.div>
+
+              {/* Subtle Loading Progress Text */}
+              <div className="text-[10px] font-mono text-[#D4A85C]/70 tracking-widest uppercase">
+                LOADING EXPERIENCE... ({Math.round((loadedCount / TOTAL_FRAMES) * 100)}%)
+              </div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -272,14 +266,11 @@ export default function WaffleReveal() {
         {/* Subtle Radial Warm Glow Bloom */}
         <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_center,rgba(51,37,28,0.25)_0%,rgba(23,23,22,0.65)_60%,rgba(14,9,6,0.95)_100%)]" />
 
-        {/* Scrolling Canvas Animation Background with Entrance Zoom Transition */}
+        {/* Canvas Animation Background with Entrance Zoom Transition */}
         <motion.div
-          initial={{ scale: 1.15, opacity: 0 }}
-          animate={{
-            scale: splashFinished ? 1 : 1.15,
-            opacity: splashFinished ? 1 : 0,
-          }}
-          transition={{ duration: 1.3, ease: [0.16, 1, 0.3, 1] }}
+          initial={{ scale: 1.1, opacity: 0 }}
+          animate={{ scale: isLoaded ? 1 : 1.1, opacity: isLoaded ? 1 : 0 }}
+          transition={{ duration: 1.0, ease: [0.16, 1, 0.3, 1] }}
           className="relative w-full h-full flex items-center justify-center pointer-events-none"
         >
           <canvas
