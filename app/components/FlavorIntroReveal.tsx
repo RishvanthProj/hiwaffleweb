@@ -23,32 +23,32 @@ const FLAVOR_WORDS: FlavorWordConfig[] = [
 
 interface FlavorWordItemProps {
   config: FlavorWordConfig;
-  progress: MotionValue<number>;
+  scrollYProgress: MotionValue<number>;
   prefersReducedMotion: boolean | null;
 }
 
-function FlavorWordItem({ config, progress, prefersReducedMotion }: FlavorWordItemProps) {
+function FlavorWordItem({ config, scrollYProgress, prefersReducedMotion }: FlavorWordItemProps) {
   const { enterStart, enterEnd, exitStart, exitEnd } = config;
 
   // Ultra-smooth feather opacity transition
-  const opacity = useTransform(progress, [enterStart, enterEnd, exitStart, exitEnd], [0, 1, 1, 0]);
+  const opacity = useTransform(scrollYProgress, [enterStart, enterEnd, exitStart, exitEnd], [0, 1, 1, 0]);
 
   // Subtle luxury vertical drift: enters from +16px below, floats up -16px on exit
   const translateY = useTransform(
-    progress,
+    scrollYProgress,
     [enterStart, enterEnd, exitStart, exitEnd],
     prefersReducedMotion ? [0, 0, 0, 0] : [16, 0, 0, -16]
   );
 
   // Subtle scale breathing: 0.97 -> 1.0 -> 1.02
   const scale = useTransform(
-    progress,
+    scrollYProgress,
     [enterStart, enterEnd, exitStart, exitEnd],
     prefersReducedMotion ? [1, 1, 1, 1] : [0.97, 1.0, 1.0, 1.02]
   );
 
   // Soft ambient bloom opacity
-  const bloomOpacity = useTransform(progress, [enterStart, enterEnd, exitStart, exitEnd], [0, 0.4, 0.4, 0]);
+  const bloomOpacity = useTransform(scrollYProgress, [enterStart, enterEnd, exitStart, exitEnd], [0, 0.4, 0.4, 0]);
 
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-20 px-4 select-none">
@@ -89,18 +89,18 @@ function FlavorWordItem({ config, progress, prefersReducedMotion }: FlavorWordIt
 }
 
 interface FlavorIntroRevealProps {
-  progress: MotionValue<number>;
+  scrollYProgress: MotionValue<number>;
 }
 
-export default function FlavorIntroReveal({ progress }: FlavorIntroRevealProps) {
+export default function FlavorIntroReveal({ scrollYProgress }: FlavorIntroRevealProps) {
   const [activeWords, setActiveWords] = useState<boolean[]>(new Array(FLAVOR_WORDS.length).fill(false));
   const prefersReducedMotion = useReducedMotion();
 
   // Bottom idle scroll chevron opacity: 1 at scroll=0, fades out to 0 at scroll=0.02
-  const idleChevronOpacity = useTransform(progress, [0, 0.02], [1, 0]);
+  const idleChevronOpacity = useTransform(scrollYProgress, [0, 0.02], [1, 0]);
 
   // Performance Optimization: Conditionally mount/unmount words only within active window
-  useMotionValueEvent(progress, "change", (latest) => {
+  useMotionValueEvent(scrollYProgress, "change", (latest) => {
     const updated = FLAVOR_WORDS.map(
       (w) => latest >= w.enterStart - 0.015 && latest <= w.exitEnd + 0.015
     );
@@ -129,7 +129,7 @@ export default function FlavorIntroReveal({ progress }: FlavorIntroRevealProps) 
           <FlavorWordItem
             key={config.word}
             config={config}
-            progress={progress}
+            scrollYProgress={scrollYProgress}
             prefersReducedMotion={prefersReducedMotion}
           />
         ) : null
