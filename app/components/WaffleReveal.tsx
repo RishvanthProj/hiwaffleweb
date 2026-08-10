@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useScroll, useMotionValueEvent, useTransform, useReducedMotion, motion, AnimatePresence } from "framer-motion";
 import { Star, Sparkles, Heart } from "lucide-react";
 
@@ -119,7 +119,7 @@ export default function WaffleReveal() {
   }, []);
 
   // Canvas draw logic
-  const renderFrame = (frameIndex: number) => {
+  const renderFrame = useCallback((frameIndex: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
@@ -155,9 +155,9 @@ export default function WaffleReveal() {
 
     ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
     ctx.restore();
-  };
+  }, []);
 
-  const requestFrameDraw = (targetIndex: number) => {
+  const requestFrameDraw = useCallback((targetIndex: number) => {
     currentFrameRef.current = targetIndex;
     if (animationFrameRef.current !== null) return;
 
@@ -165,7 +165,7 @@ export default function WaffleReveal() {
       renderFrame(currentFrameRef.current);
       animationFrameRef.current = null;
     });
-  };
+  }, [renderFrame]);
 
   // Map scroll progress (0.00 -> 0.82) linearly to frame index (0 -> 269 = frame_0270.webp)
   useMotionValueEvent(scrollYProgress, "change", (latest) => {
@@ -197,7 +197,7 @@ export default function WaffleReveal() {
       );
       requestFrameDraw(targetFrame);
     }
-  }, [isLoaded, scrollYProgress]);
+  }, [isLoaded, scrollYProgress, requestFrameDraw]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -207,7 +207,7 @@ export default function WaffleReveal() {
     };
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
-  }, [isLoaded]);
+  }, [isLoaded, renderFrame]);
 
   return (
     <section id="experience" ref={containerRef} className="relative h-[300vh] w-full bg-[#0E0906]">
