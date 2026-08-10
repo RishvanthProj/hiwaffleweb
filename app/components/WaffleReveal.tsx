@@ -11,8 +11,8 @@ const FRAME_PREFIX = "frame_";
 const TOTAL_FRAMES = 270;
 const REVERSE_SEQUENCE = false;
 
-// Geometric scroll track height tuning constant (900vh stretches track to prevent fast flick completion)
-const SCROLL_TRACK_VH = 900;
+// Geometric scroll track height tuning constant (Tuned to 500vh for snappy, active scrollytelling)
+const SCROLL_TRACK_VH = 500;
 
 export default function WaffleReveal() {
   const containerRef = useRef<HTMLDivElement>(null);
